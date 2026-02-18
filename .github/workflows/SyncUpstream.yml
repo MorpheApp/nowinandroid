@@ -1,0 +1,50 @@
+name: Sync with Upstream
+
+on:
+  schedule:
+    # Run every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/android/nowinandroid.git
+
+      - name: Fetch upstream
+        run: git fetch upstream --tags --prune
+
+      - name: Rebase and push all branches
+        run: |
+          for branch in $(git branch -r | grep 'upstream/' | grep -v 'HEAD' | sed 's/upstream\///'); do
+            echo "Processing branch: $branch"
+
+            # Check if the branch exists in origin
+            if git ls-remote --exit-code origin "$branch" > /dev/null 2>&1; then
+              # Branch exists in origin, checkout and rebase onto upstream
+              git checkout -B "$branch" "origin/$branch"
+              git rebase "upstream/$branch"
+            else
+              # Branch doesn't exist in origin, just track upstream
+              git checkout -B "$branch" "upstream/$branch"
+            fi
+
+            git push origin "$branch" --force-with-lease
+          done
+
+      - name: Push all tags
+        run: git push origin --tags
+
